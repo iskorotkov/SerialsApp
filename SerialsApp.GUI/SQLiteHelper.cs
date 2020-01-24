@@ -105,59 +105,54 @@ ORDER BY serials.name,
             {
                 return;
             }
-
-            long seasonsWithEpisodes;
-            long seasonsWithoutEpisodes;
-            if (_cache.Contains(id))
+            
+            if (!_cache.Contains(id))
             {
-                (seasonsWithEpisodes, seasonsWithoutEpisodes) = _cache.Get(id);
+                ReadAndCache();
             }
-            else
-            {
-                using var con = OpenConnection();
-                var seasonsCommand = BuildSeasonsCommand(id, con);
-
-                long seasons;
-                using (var reader = seasonsCommand.ExecuteReader())
-                {
-                    reader.Read();
-                    seasons = (long) reader["count"];
-                }
-
-                var seasonsWithEpisodesCommand = BuildSeasonsWithEpisodesCommand(id, con);
-                using (var reader = seasonsWithEpisodesCommand.ExecuteReader())
-                {
-                    reader.Read();
-                    seasonsWithEpisodes = (long) reader["count"];
-                }
-
-                seasonsWithoutEpisodes = seasons - seasonsWithEpisodes;
-                _cache.Add(id, seasonsWithEpisodes, seasonsWithoutEpisodes);
-            }
-
+            var (seasonsWithEpisodes, seasonsWithoutEpisodes) = _cache.Get(id);
             node.Header = $@"{node.Header} - {seasonsWithEpisodes}/{seasonsWithoutEpisodes}";
         }
 
-        private static SQLiteCommand BuildSeasonsWithEpisodesCommand(long id, SQLiteConnection con)
+        private void ReadAndCache()
         {
-            return new SQLiteCommand()
+            using var con = OpenConnection();
+            var seasonsCommand = BuildAllSeasonsCommand(con);
+            using var reader = seasonsCommand.ExecuteReader();
+            while (reader.Read())
             {
-                Connection = con,
-                CommandText = $@"SELECT count(DISTINCT seasons.id) as count
-FROM seasons
-INNER JOIN episodes ON seasons.id = episodes.season_id
-WHERE seasons.serial_id = {id}"
-            };
+                var id = (long) reader["id"];
+                var total = (long) reader["total"];
+                var withEpisodes = (long) reader["with_episodes"];
+                _cache.Add(id, withEpisodes, total - withEpisodes);
+            }
         }
 
-        private static SQLiteCommand BuildSeasonsCommand(long id, SQLiteConnection con)
+        private static SQLiteCommand BuildAllSeasonsCommand(SQLiteConnection con)
         {
             return new SQLiteCommand
             {
                 Connection = con,
-                CommandText = $@"SELECT count(DISTINCT seasons.id) as count
-FROM seasons
-WHERE seasons.serial_id = {id}"
+                CommandText = @"-- total seasons
+SELECT serials.id,
+       count(DISTINCT seasons.id) AS total,
+       query.with_episodes
+FROM serials
+         LEFT JOIN seasons ON serials.id = seasons.serial_id
+         LEFT JOIN (
+    -- seasons with episodes
+    SELECT s.id,
+           count(DISTINCT query.season_id) AS with_episodes
+    FROM serials AS s
+             LEFT JOIN (
+        SELECT seasons.id        AS season_id,
+               seasons.serial_id AS serial_id
+        FROM seasons
+                 JOIN episodes ON seasons.id = episodes.season_id
+    ) AS query ON s.id = query.serial_id
+    GROUP BY s.id
+) AS query ON query.id = serials.id
+GROUP BY serials.id"
             };
         }
     }
