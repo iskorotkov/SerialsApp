@@ -9,7 +9,7 @@ namespace SerialsApp.GUI
     public class SQLiteHelper
     {
         private readonly SerialsCache _cache = new SerialsCache();
-        
+
         public void PopulateTree(TreeView tree)
         {
             using var connection = OpenConnection();
