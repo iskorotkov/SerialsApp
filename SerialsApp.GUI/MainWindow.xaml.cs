@@ -10,7 +10,8 @@ namespace SerialsApp.GUI
         public MainWindow()
         {
             InitializeComponent();
-            SQLiteHelper.PopulateTree(serialsTree);
+            var helper = new SQLiteHelper();
+            helper.PopulateTree(serialsTree);
         }
     }
 }

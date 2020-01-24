@@ -1,32 +1,19 @@
-﻿using System.Windows.Controls;
+﻿using System;
+using System.Windows.Controls;
 using System.Data.SQLite;
 using System.Text.RegularExpressions;
 using System.Windows;
 
 namespace SerialsApp.GUI
 {
-    public static class SQLiteHelper
+    public class SQLiteHelper
     {
-        public static void PopulateTree(TreeView tree)
+        private readonly SerialsCache _cache = new SerialsCache();
+        
+        public void PopulateTree(TreeView tree)
         {
             using var connection = OpenConnection();
-            var command = new SQLiteCommand
-            {
-                Connection = connection,
-                CommandText = @"SELECT serials.id AS serial_id,
-       serials.name AS serial_name,
-       seasons.id AS season_id,
-       seasons.name AS season_name,
-       episodes.name AS episode_name
-FROM serials
-LEFT JOIN seasons ON serials.id = seasons.serial_id
-LEFT JOIN episodes ON seasons.id = episodes.season_id
-ORDER BY serials.name,
-         serials.id,
-         seasons.name,
-         seasons.id,
-         episodes.name"
-            };
+            var command = BuildGetAllCommand(connection);
             using var reader = command.ExecuteReader();
 
             TreeViewItem serialNode = null;
@@ -45,8 +32,8 @@ ORDER BY serials.name,
 
                     var node = serialNode;
                     var id = serialId;
-                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(sender, args, node, id); };
-                    serialNode.Collapsed += (sender, args) => { ClearNodeHeader(sender, args, node); };
+                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(args, node, id); };
+                    serialNode.Collapsed += (sender, args) => { ClearNodeHeader(args, node); };
                 }
 
                 if (reader["season_id"] is long seasonId)
@@ -67,7 +54,28 @@ ORDER BY serials.name,
             }
         }
 
-        private static void ClearNodeHeader(object sender, RoutedEventArgs args, HeaderedItemsControl node)
+        private static SQLiteCommand BuildGetAllCommand(SQLiteConnection connection)
+        {
+            return new SQLiteCommand
+            {
+                Connection = connection,
+                CommandText = @"SELECT serials.id AS serial_id,
+       serials.name AS serial_name,
+       seasons.id AS season_id,
+       seasons.name AS season_name,
+       episodes.name AS episode_name
+FROM serials
+LEFT JOIN seasons ON serials.id = seasons.serial_id
+LEFT JOIN episodes ON seasons.id = episodes.season_id
+ORDER BY serials.name,
+         serials.id,
+         seasons.name,
+         seasons.id,
+         episodes.name"
+            };
+        }
+
+        private static void ClearNodeHeader(RoutedEventArgs args, HeaderedItemsControl node)
         {
             if (!ReferenceEquals(args.OriginalSource, node))
             {
@@ -91,30 +99,48 @@ ORDER BY serials.name,
             return connection;
         }
 
-        private static void RefineNodeHeader(object sender, RoutedEventArgs args, HeaderedItemsControl node, long id)
+        private void RefineNodeHeader(RoutedEventArgs args, HeaderedItemsControl node, long id)
         {
             if (!ReferenceEquals(args.OriginalSource, node))
             {
                 return;
             }
 
-            using var con = OpenConnection();
-            var seasonsCommand = new SQLiteCommand
+            long seasonsWithEpisodes;
+            long seasonsWithoutEpisodes;
+            if (_cache.Contains(id))
             {
-                Connection = con,
-                CommandText = $@"SELECT count(DISTINCT seasons.id) as count
-FROM seasons
-WHERE seasons.serial_id = {id}"
-            };
+                (seasonsWithEpisodes, seasonsWithoutEpisodes) = _cache.Get(id);
+            }
+            else
+            {
+                using var con = OpenConnection();
+                var seasonsCommand = BuildSeasonsCommand(id, con);
 
-            long seasons;
-            using (var reader = seasonsCommand.ExecuteReader())
-            {
-                reader.Read();
-                seasons = (long) reader["count"];
+                long seasons;
+                using (var reader = seasonsCommand.ExecuteReader())
+                {
+                    reader.Read();
+                    seasons = (long) reader["count"];
+                }
+
+                var seasonsWithEpisodesCommand = BuildSeasonsWithEpisodesCommand(id, con);
+                using (var reader = seasonsWithEpisodesCommand.ExecuteReader())
+                {
+                    reader.Read();
+                    seasonsWithEpisodes = (long) reader["count"];
+                }
+
+                seasonsWithoutEpisodes = seasons - seasonsWithEpisodes;
+                _cache.Add(id, seasonsWithEpisodes, seasonsWithoutEpisodes);
             }
 
-            var seasonsWithEpisodesCommand = new SQLiteCommand()
+            node.Header = $@"{node.Header} - {seasonsWithEpisodes}/{seasonsWithoutEpisodes}";
+        }
+
+        private static SQLiteCommand BuildSeasonsWithEpisodesCommand(long id, SQLiteConnection con)
+        {
+            return new SQLiteCommand()
             {
                 Connection = con,
                 CommandText = $@"SELECT count(DISTINCT seasons.id) as count
@@ -122,21 +148,17 @@ FROM seasons
 INNER JOIN episodes ON seasons.id = episodes.season_id
 WHERE seasons.serial_id = {id}"
             };
-
-            long seasonsWithEpisodes;
-            using (var reader = seasonsWithEpisodesCommand.ExecuteReader())
-
-            {
-                reader.Read();
-                seasonsWithEpisodes = (long) reader["count"];
-            }
-
-            node.Header = $@"{node.Header} - {seasonsWithEpisodes}/{seasons - seasonsWithEpisodes}";
         }
 
-        private static bool CheckIfWasRefined(HeaderedItemsControl node)
+        private static SQLiteCommand BuildSeasonsCommand(long id, SQLiteConnection con)
         {
-            return Regex.IsMatch(node.Header.ToString(), @".* - (\d)+?/(\d)+?");
+            return new SQLiteCommand
+            {
+                Connection = con,
+                CommandText = $@"SELECT count(DISTINCT seasons.id) as count
+FROM seasons
+WHERE seasons.serial_id = {id}"
+            };
         }
     }
 }
