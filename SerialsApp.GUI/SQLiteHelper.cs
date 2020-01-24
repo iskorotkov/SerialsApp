@@ -1,5 +1,4 @@
-﻿using System;
-using System.Windows.Controls;
+﻿using System.Windows.Controls;
 using System.Data.SQLite;
 
 namespace SerialsApp.GUI
@@ -14,7 +13,7 @@ namespace SerialsApp.GUI
                 DataSource = @"C:\Projects\Databases\hw1.sqlite"
             };
 
-            /*using */
+            // TODO: Close connection
             var connection = new SQLiteConnection(builder.ConnectionString);
             connection.Open();
 
@@ -35,54 +34,40 @@ ORDER BY serials.name,
          seasons.id,
          episodes.name"
             };
-            using var reader = command.ExecuteReader();
-
-            TreeViewItem serialNode = null;
-            TreeViewItem seasonNode = null;
-            long prevSerialId = -1;
-            long prevSeasonId = -1;
-            while (reader.Read())
+            using (var reader = command.ExecuteReader())
             {
-                var serialId = (long) reader["serial_id"];
-                var serialName = (string) reader["serial_name"];
-                if (serialId != prevSerialId)
-                {
-                    var index = tree.Items.Add(new TreeViewItem {Header = serialName});
-                    serialNode = (TreeViewItem) tree.Items.GetItemAt(index);
-                    prevSerialId = serialId;
 
-                    var id = serialId;
-                    var con = connection;
-                    var node = serialNode;
-                    
-                }
-
-                try
+                TreeViewItem serialNode = null;
+                TreeViewItem seasonNode = null;
+                long prevSerialId = -1;
+                long prevSeasonId = -1;
+                while (reader.Read())
                 {
-                    var seasonId = (long) reader["season_id"];
-                    var seasonName = (string) reader["season_name"];
-                    if (seasonId != prevSeasonId)
+                    var serialId = (long) reader["serial_id"];
+                    var serialName = (string) reader["serial_name"];
+                    if (serialId != prevSerialId)
                     {
-                        // ReSharper disable once PossibleNullReferenceException
-                        var index = serialNode.Items.Add(new TreeViewItem {Header = seasonName});
-                        seasonNode = (TreeViewItem) serialNode.Items.GetItemAt(index);
-                        prevSeasonId = seasonId;
+                        var index = tree.Items.Add(new TreeViewItem {Header = serialName});
+                        serialNode = (TreeViewItem) tree.Items.GetItemAt(index);
+                        prevSerialId = serialId;
                     }
 
-                    try
+                    if (reader["season_id"] is long seasonId)
                     {
-                        var episodeName = (string) reader["episode_name"];
-                        // ReSharper disable once PossibleNullReferenceException
-                        seasonNode.Items.Add(episodeName);
+                        var seasonName = (string) reader["season_name"];
+                        if (seasonId != prevSeasonId)
+                        {
+                            var index = serialNode.Items.Add(new TreeViewItem {Header = seasonName});
+                            seasonNode = (TreeViewItem) serialNode.Items.GetItemAt(index);
+                            prevSeasonId = seasonId;
+                        }
+
+                        if (reader["episode_name"] is string episodeName)
+                        {
+                            seasonNode.Items.Add(episodeName);
+
+                        }
                     }
-                    catch (Exception e)
-                    {
-                        // ignored
-                    }
-                }
-                catch (Exception e)
-                {
-                    // ignored
                 }
             }
         }
