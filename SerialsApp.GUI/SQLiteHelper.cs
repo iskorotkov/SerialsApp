@@ -44,22 +44,23 @@ ORDER BY serials.name,
 
                     var node = serialNode;
                     var id = serialId;
-                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(node, id); };
+                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(sender, node, id); };
                 }
 
-                if (!(reader["season_id"] is long seasonId)) continue;
-
-                var seasonName = (string) reader["season_name"];
-                if (seasonId != prevSeasonId)
+                if (reader["season_id"] is long seasonId)
                 {
-                    var index = serialNode.Items.Add(new TreeViewItem {Header = seasonName});
-                    seasonNode = (TreeViewItem) serialNode.Items.GetItemAt(index);
-                    prevSeasonId = seasonId;
-                }
+                    var seasonName = (string) reader["season_name"];
+                    if (seasonId != prevSeasonId)
+                    {
+                        var index = serialNode.Items.Add(new TreeViewItem {Header = seasonName});
+                        seasonNode = (TreeViewItem) serialNode.Items.GetItemAt(index);
+                        prevSeasonId = seasonId;
+                    }
 
-                if (reader["episode_name"] is string episodeName)
-                {
-                    seasonNode.Items.Add(episodeName);
+                    if (reader["episode_name"] is string episodeName)
+                    {
+                        seasonNode.Items.Add(episodeName);
+                    }
                 }
             }
         }
@@ -77,9 +78,13 @@ ORDER BY serials.name,
             return connection;
         }
 
-        private static void RefineNodeHeader(HeaderedItemsControl node, long id)
+        private static void RefineNodeHeader(object sender, HeaderedItemsControl node, long id)
         {
-            if (Regex.IsMatch(node.Header.ToString(), @".* - (\d)+?/(\d)+?"))
+            if (!Equals(sender, node))
+            {
+                return;
+            }
+            if (CheckIfWasRefined(node))
             {
                 return;
             }
@@ -118,6 +123,11 @@ WHERE seasons.serial_id = {id}"
             }
 
             node.Header = $@"{node.Header} - {seasonsWithEpisodes}/{seasons - seasonsWithEpisodes}";
+        }
+
+        private static bool CheckIfWasRefined(HeaderedItemsControl node)
+        {
+            return Regex.IsMatch(node.Header.ToString(), @".* - (\d)+?/(\d)+?");
         }
     }
 }
