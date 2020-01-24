@@ -1,6 +1,7 @@
 ﻿using System.Windows.Controls;
 using System.Data.SQLite;
 using System.Text.RegularExpressions;
+using System.Windows;
 
 namespace SerialsApp.GUI
 {
@@ -44,7 +45,8 @@ ORDER BY serials.name,
 
                     var node = serialNode;
                     var id = serialId;
-                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(sender, node, id); };
+                    serialNode.Expanded += (sender, args) => { RefineNodeHeader(sender, args, node, id); };
+                    serialNode.Collapsed += (sender, args) => { ClearNodeHeader(sender, args, node); };
                 }
 
                 if (reader["season_id"] is long seasonId)
@@ -65,6 +67,17 @@ ORDER BY serials.name,
             }
         }
 
+        private static void ClearNodeHeader(object sender, RoutedEventArgs args, HeaderedItemsControl node)
+        {
+            if (!ReferenceEquals(args.OriginalSource, node))
+            {
+                return;
+            }
+
+            var s = Regex.Match(node.Header.ToString(), @"(.*?) - \d+/\d+").Groups[1].Value;
+            node.Header = s;
+        }
+
         private static SQLiteConnection OpenConnection()
         {
             var builder = new SQLiteConnectionStringBuilder
@@ -78,13 +91,9 @@ ORDER BY serials.name,
             return connection;
         }
 
-        private static void RefineNodeHeader(object sender, HeaderedItemsControl node, long id)
+        private static void RefineNodeHeader(object sender, RoutedEventArgs args, HeaderedItemsControl node, long id)
         {
-            if (!Equals(sender, node))
-            {
-                return;
-            }
-            if (CheckIfWasRefined(node))
+            if (!ReferenceEquals(args.OriginalSource, node))
             {
                 return;
             }
